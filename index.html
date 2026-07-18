@@ -331,8 +331,7 @@ select option { background: var(--surface); color: var(--text); }
   </div>
   <label style="margin-top:12px">Streaming Platformu</label>
   <div class="season-row" style="margin-top:0">
-    <input class="field" id="fStreaming" placeholder="örn: Netflix, Disney+">
-    <button type="button" class="season-avg-btn" id="btnFetchStreaming" onclick="fetchStreamingPlatform()">📡 Otomatik Çek</button>
+    <input class="field" id="fStreaming" placeholder="IMDb Eşle ile otomatik doldurulur" style="width:100%">
   </div>
 </div>
 
@@ -918,8 +917,8 @@ async function fetchCurrentIMDb(){
 
   if(data.found){
     showToast(m.isSeries?'📺 IMDb dizi bilgileri yüklendi!':'🎬 IMDb bilgileri yüklendi!','var(--imdb)');
-    if(m.isSeries){
-      const sp=await fetchTMDBProviders(m.title,true);
+    if(!m.streamingPlatform){
+      const sp=await fetchTMDBProviders(m.title,m.isSeries);
       if(sp.found&&sp.platforms){
         document.getElementById('fStreaming').value=sp.platforms;
         showToast('📡 Platform: '+sp.platforms,'var(--success)');
@@ -955,25 +954,6 @@ async function fetchSeasonAvg(){
   }
 }
 
-/* --- FETCH STREAMING PLATFORM (TMDB) --- */
-async function fetchStreamingPlatform(){
-  const m=modalMovie();
-  if(!m.title){showToast('⚠️ Önce dizi adını girin','var(--wish)');return;}
-  const btn=document.getElementById('btnFetchStreaming');
-  const oldLabel=btn.textContent;
-  btn.textContent='⏳ Aranıyor...';
-  const data=await fetchTMDBProviders(m.title,true);
-  btn.textContent=oldLabel;
-  if(data.found&&data.platforms){
-    document.getElementById('fStreaming').value=data.platforms;
-    showToast('📡 Platform bilgisi bulundu: '+data.platforms,'var(--success)');
-  } else if(data.found){
-    showToast('⚠️ Bu dizi için yayın platformu bulunamadı (TR/US)','var(--wish)');
-  } else {
-    showToast('❌ TMDB\'de dizi bulunamadı','var(--danger)');
-  }
-}
-
 /* --- BULK FETCH IMDB (movies + series) --- */
 async function bulkFetchIMDb(){
   const uncached=movies.filter(m=>!imdbCache[imdbKey(m)]);
@@ -984,7 +964,21 @@ async function bulkFetchIMDb(){
     if(!seen.has(k)){seen.add(k);toFetch.push(m);}
   });
 
-  if(toFetch.length===0){
+  // Zaten IMDb ile eşleşmiş ama platform bilgisi eksik olanlar (mevcut kayıtları tamamlamak için)
+  const needsPlatform=movies.filter(m=>{
+    const k=imdbKey(m);
+    if(seen.has(k)) return false; // toFetch listesinde zaten var, orada halledilecek
+    const cached=imdbCache[k];
+    return cached&&cached.found&&!m.streamingPlatform;
+  });
+  const seenPlat=new Set();
+  const toFetchPlatform=[];
+  needsPlatform.forEach(m=>{
+    const k=imdbKey(m);
+    if(!seenPlat.has(k)){seenPlat.add(k);toFetchPlatform.push(m);}
+  });
+
+  if(toFetch.length===0&&toFetchPlatform.length===0){
     showToast('✅ Tüm filmler/diziler zaten eşleştirilmiş!','var(--success)');
     return;
   }
@@ -994,7 +988,7 @@ async function bulkFetchIMDb(){
   pm.style.display='flex';
 
   let done=0,found=0,notFound=0;
-  const total=toFetch.length;
+  const total=toFetch.length+toFetchPlatform.length;
 
   for(let i=0;i<toFetch.length;i++){
     if(bulkAbort) break;
@@ -1008,15 +1002,30 @@ async function bulkFetchIMDb(){
     done++;
     if(data.found) found++; else notFound++;
 
-    if(m.isSeries&&data.found&&!m.streamingPlatform){
-      const sp=await fetchTMDBProviders(m.title,true);
+    if(data.found&&!m.streamingPlatform){
+      const sp=await fetchTMDBProviders(m.title,m.isSeries);
       if(sp.found&&sp.platforms){
-        movies.filter(x=>x.isSeries&&x.title===m.title).forEach(x=>x.streamingPlatform=sp.platforms);
+        movies.filter(x=>imdbKey(x)===imdbKey(m)).forEach(x=>x.streamingPlatform=sp.platforms);
       }
     }
 
     if(done%10===0) saveIMDbCache();
-    if(i<toFetch.length-1) await new Promise(r=>setTimeout(r,250));
+    if(i<toFetch.length-1||toFetchPlatform.length) await new Promise(r=>setTimeout(r,250));
+  }
+
+  for(let j=0;j<toFetchPlatform.length;j++){
+    if(bulkAbort) break;
+    const m=toFetchPlatform[j];
+    document.getElementById('progressText').textContent='📡 '+m.title;
+    document.getElementById('progressCount').textContent=`${done}/${total} tamamlandı · ✅ ${found} eşleşti · ❌ ${notFound} bulunamadı`;
+    document.getElementById('progressBar').style.width=((done/total)*100)+'%';
+
+    const sp=await fetchTMDBProviders(m.title,m.isSeries);
+    if(sp.found&&sp.platforms){
+      movies.filter(x=>imdbKey(x)===imdbKey(m)).forEach(x=>x.streamingPlatform=sp.platforms);
+    }
+    done++;
+    if(j<toFetchPlatform.length-1) await new Promise(r=>setTimeout(r,250));
   }
 
   saveStore();
