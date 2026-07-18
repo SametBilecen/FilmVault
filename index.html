@@ -331,11 +331,14 @@ select option { background: var(--surface); color: var(--text); }
     <input class="field" id="fSeasonNumber" placeholder="Sezon numarası (örn: 2)" inputmode="numeric">
     <button type="button" class="season-avg-btn" onclick="fetchSeasonAvg()">📊 Sezon Puanı Getir</button>
   </div>
-  <label style="margin-top:12px">Streaming Platformu</label>
-  <div class="season-row" style="margin-top:0">
-    <input class="field" id="fStreaming" placeholder="IMDb Eşle ile otomatik doldurulur" style="width:100%">
-  </div>
 </div>
+
+<label style="margin-top:12px">Streaming Platformu</label>
+<div class="season-row" style="margin-top:0">
+  <input class="field" id="fStreaming" placeholder="IMDb Eşle ile otomatik doldurulur" style="width:100%" oninput="updateStreamingPreview()">
+</div>
+<div id="fStreamingPreview" style="display:none;margin-top:6px;padding:8px 10px;background:rgba(108,92,231,.08);
+  border-radius:8px;font-size:12px;color:var(--accent2);line-height:1.5;word-break:break-word;white-space:normal"></div>
 
 <label>Format</label>
 <select class="field" id="fFormat">
@@ -544,6 +547,17 @@ function cleanTitle(t){
 }
 
 /* --- CACHE KEYS --- */
+function updateStreamingPreview(){
+  const val=document.getElementById('fStreaming').value.trim();
+  const box=document.getElementById('fStreamingPreview');
+  if(val){
+    box.style.display='block';
+    box.textContent='📡 '+val;
+  } else {
+    box.style.display='none';
+    box.textContent='';
+  }
+}
 function imdbKey(m){
   return m.isSeries ? (m.title+'__series') : m.title;
 }
@@ -831,6 +845,7 @@ function editMovie(i){
   document.getElementById('seasonInputRow').style.display=m.seasonMode?'flex':'none';
   document.getElementById('fSeasonNumber').value=m.seasonNumber||'';
   document.getElementById('fStreaming').value=m.streamingPlatform||'';
+  updateStreamingPreview();
   document.getElementById('formTitle').textContent='Film Düzenle';
   document.getElementById('btnDelete').style.display='flex';
   updateModalFavWishButtons(m);
@@ -923,6 +938,7 @@ async function fetchCurrentIMDb(){
       const sp=await fetchTMDBProviders(m.title,m.isSeries);
       if(sp.found&&sp.platforms){
         document.getElementById('fStreaming').value=sp.platforms;
+        updateStreamingPreview();
         showToast('📡 Platform: '+sp.platforms,'var(--success)');
       }
     }
@@ -1060,6 +1076,7 @@ function openNew(){
   document.getElementById('seasonInputRow').style.display='none';
   document.getElementById('fSeasonNumber').value='';
   document.getElementById('fStreaming').value='';
+  updateStreamingPreview();
   document.getElementById('formTitle').textContent='Yeni Film Ekle';
   document.getElementById('btnDelete').style.display='none';
   document.getElementById('btnToggleFav').classList.remove('active');
