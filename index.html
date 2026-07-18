@@ -772,7 +772,7 @@ function render(arr){
         </div>
         ${m.turkish?`<div class="card-turkish">${m.turkish}</div>`:''}
         <div class="card-meta">
-          ${m.isSeries?`<span>📺 Dizi${m.streamingPlatform?' · '+m.streamingPlatform:''}</span>`:`<span>📀 ${m.format}</span>`}
+          ${m.isSeries?`<span>📺 Dizi${m.streamingPlatform?' · '+m.streamingPlatform:''}</span>`:`<span>📀 ${m.format}${m.streamingPlatform?' - '+m.streamingPlatform:''}</span>`}
           ${m.shelf?`<span>🗄️ Raf ${m.shelf}</span>`:''}
           ${m.notes?`<span>📝 ${m.notes.substring(0,25)}${m.notes.length>25?'…':''}</span>`:''}
           ${!m.isSeries&&copyIndex[i]>1?`<span style="background:rgba(255,71,87,.15);color:var(--danger)">📄 ${copyIndex[i]}. Kopya</span>`:''}
