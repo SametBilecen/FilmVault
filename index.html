@@ -18,6 +18,7 @@
   --safe-bottom:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
 
 /* HEADER */
@@ -81,9 +82,10 @@ header h2{font-size:22px;font-weight:700;letter-spacing:-.3px;
   padding:2px 6px;border-radius:4px;line-height:1.3}
 .card-turkish{font-size:13px;color:var(--text2);margin-bottom:6px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-meta{display:flex;flex-wrap:wrap;gap:4px;font-size:11px}
+.card-meta{display:flex;flex-wrap:wrap;gap:4px;font-size:11px;max-width:100%}
 .card-meta span{background:rgba(108,92,231,.12);color:var(--accent2);padding:2px 7px;
-  border-radius:6px;white-space:nowrap}
+  border-radius:6px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.card-meta span.platform-tag{display:inline-block;max-width:200px;vertical-align:top}
 .card-badges{position:absolute;top:8px;right:8px;display:flex;gap:3px;font-size:14px}
 
 /* MODAL */
@@ -772,7 +774,7 @@ function render(arr){
         </div>
         ${m.turkish?`<div class="card-turkish">${m.turkish}</div>`:''}
         <div class="card-meta">
-          ${m.isSeries?`<span>📺 Dizi${m.streamingPlatform?' · '+m.streamingPlatform:''}</span>`:`<span>📀 ${m.format}${m.streamingPlatform?' - '+m.streamingPlatform:''}</span>`}
+          ${m.isSeries?`<span class="platform-tag" title="Dizi${m.streamingPlatform?' - '+m.streamingPlatform:''}">📺 Dizi${m.streamingPlatform?' - '+m.streamingPlatform:''}</span>`:`<span class="platform-tag" title="${m.format}${m.streamingPlatform?' - '+m.streamingPlatform:''}">📀 ${m.format}${m.streamingPlatform?' - '+m.streamingPlatform:''}</span>`}
           ${m.shelf?`<span>🗄️ Raf ${m.shelf}</span>`:''}
           ${m.notes?`<span>📝 ${m.notes.substring(0,25)}${m.notes.length>25?'…':''}</span>`:''}
           ${!m.isSeries&&copyIndex[i]>1?`<span style="background:rgba(255,71,87,.15);color:var(--danger)">📄 ${copyIndex[i]}. Kopya</span>`:''}
