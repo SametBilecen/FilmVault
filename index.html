@@ -313,6 +313,16 @@ select option { background: var(--surface); color: var(--text); }
 
 <label>Film Adı (Orijinal)</label>
 <input class="field" id="fTitle" placeholder="Film adını girin">
+<div style="display:flex;gap:6px;margin-top:6px">
+  <button type="button" onclick="toggleExtraField('yearRow')" style="padding:4px 10px;border:none;border-radius:6px;background:rgba(108,92,231,.1);color:var(--accent2);font-size:11px;font-weight:600;cursor:pointer">📅 Yıl Ekle</button>
+  <button type="button" onclick="toggleExtraField('imdbIdRow')" style="padding:4px 10px;border:none;border-radius:6px;background:rgba(245,197,24,.1);color:var(--imdb);font-size:11px;font-weight:600;cursor:pointer">🔗 IMDb ID</button>
+</div>
+<div id="yearRow" style="display:none;margin-top:6px">
+  <input class="field" id="fYear" placeholder="Yapım yılı (örn: 2008)" inputmode="numeric">
+</div>
+<div id="imdbIdRow" style="display:none;margin-top:6px">
+  <input class="field" id="fImdbId" placeholder="IMDb ID (örn: tt1417652)">
+</div>
 
 <label>Türkçe Ad</label>
 <input class="field" id="fTurkish" placeholder="Türkçe adını girin (opsiyonel)">
@@ -527,6 +537,19 @@ function norm(t){
     .replace(/ı/g,'i').replace(/ş/g,'s').replace(/ğ/g,'g')
     .replace(/ü/g,'u').replace(/ö/g,'o').replace(/ç/g,'c');
 }
+function titleCase(str){
+  return str.replace(/(^|\s)\S/g,function(m){return m.toLocaleUpperCase('tr');});
+}
+function applyTitleCase(input){
+  const pos=input.selectionStart;
+  const val=input.value;
+  const nv=titleCase(val);
+  if(val!==nv){input.value=nv;input.setSelectionRange(pos,pos);}
+}
+function toggleExtraField(id){
+  const el=document.getElementById(id);
+  el.style.display=el.style.display==='none'?'block':'none';
+}
 function normalizeFormat(f){
   if(!f) return '';
   const fl=f.toLowerCase();
@@ -559,17 +582,26 @@ function updateStreamingPreview(){
   }
 }
 function imdbKey(m){
-  return m.isSeries ? (m.title+'__series') : m.title;
+  let key=m.isSeries?(m.title+'__series'):m.title;
+  if(m.year) key+='__y'+m.year;
+  if(m.imdbId) key+='__id'+m.imdbId;
+  return key;
 }
 function seasonKeyFor(title,season){
   return title+'__season'+season;
 }
 
 /* --- OMDB FETCH (movie or series) --- */
-async function fetchOMDb(title,isSeries){
-  const clean=cleanTitle(title);
-  let url=`https://www.omdbapi.com/?t=${encodeURIComponent(clean)}&apikey=${OMDB_KEY}`;
-  if(isSeries) url+='&type=series';
+async function fetchOMDb(title,isSeries,year,imdbId){
+  let url;
+  if(imdbId){
+    url=`https://www.omdbapi.com/?i=${encodeURIComponent(imdbId)}&apikey=${OMDB_KEY}`;
+  } else {
+    const clean=cleanTitle(title);
+    url=`https://www.omdbapi.com/?t=${encodeURIComponent(clean)}&apikey=${OMDB_KEY}`;
+    if(isSeries) url+='&type=series';
+    if(year) url+='&y='+encodeURIComponent(year);
+  }
   try{
     const r=await fetch(url);
     const d=await r.json();
@@ -646,6 +678,16 @@ function getSeasonAvg(m){
   return seasonCache[key]||null;
 }
 
+/* --- ORPHAN CACHE CLEANUP --- */
+function cleanOrphanCache(){
+  const usedImdb=new Set();const usedSeason=new Set();
+  movies.forEach(m=>{usedImdb.add(imdbKey(m));if(m.seasonMode&&m.seasonNumber) usedSeason.add(seasonKeyFor(m.title,m.seasonNumber));});
+  let c1=0,c2=0;
+  Object.keys(imdbCache).forEach(k=>{if(!usedImdb.has(k)){delete imdbCache[k];c1++;}});
+  Object.keys(seasonCache).forEach(k=>{if(!usedSeason.has(k)){delete seasonCache[k];c2++;}});
+  if(c1||c2){saveIMDbCache();saveSeasonCache();}
+}
+
 /* --- UPDATE COUNT --- */
 function updateCount(){
   document.getElementById('count').textContent=movies.length+' film yüklü';
@@ -660,7 +702,8 @@ function updateStats(){
   const other=nonSeries.length-dvd-br-uhd;
   const fav=movies.filter(m=>m.favorite).length;
   const wish=movies.filter(m=>m.wishlist).length;
-  const cached=Object.keys(imdbCache).filter(k=>imdbCache[k].found).length;
+  const seenKeys=new Set();let cached=0;
+  movies.forEach(m=>{const k=imdbKey(m);if(!seenKeys.has(k)&&imdbCache[k]&&imdbCache[k].found){seenKeys.add(k);cached++;}});
   let h='';
   h+=`<span class="stat-chip">📀 DVD: ${dvd}</span>`;
   h+=`<span class="stat-chip">💿 Blu-ray: ${br}</span>`;
@@ -844,6 +887,10 @@ function editMovie(i){
   document.getElementById('fSeasonMode').checked=!!m.seasonMode;
   document.getElementById('seasonInputRow').style.display=m.seasonMode?'flex':'none';
   document.getElementById('fSeasonNumber').value=m.seasonNumber||'';
+  document.getElementById('fYear').value=m.year||'';
+  document.getElementById('fImdbId').value=m.imdbId||'';
+  document.getElementById('yearRow').style.display=m.year?'block':'none';
+  document.getElementById('imdbIdRow').style.display=m.imdbId?'block':'none';
   document.getElementById('fStreaming').value=m.streamingPlatform||'';
   updateStreamingPreview();
   document.getElementById('formTitle').textContent='Film Düzenle';
@@ -860,9 +907,12 @@ function modalMovie(){
   // böylece başlık değiştirilip kaydetmeden IMDb/TMDB'den çekilebilir.
   return {
     title:document.getElementById('fTitle').value.trim(),
+    turkish:document.getElementById('fTurkish').value.trim(),
     isSeries:document.getElementById('fSeries').checked,
     seasonMode:document.getElementById('fSeasonMode').checked,
-    seasonNumber:document.getElementById('fSeasonNumber').value.trim()
+    seasonNumber:document.getElementById('fSeasonNumber').value.trim(),
+    year:document.getElementById('fYear').value.trim(),
+    imdbId:document.getElementById('fImdbId').value.trim()
   };
 }
 
@@ -926,7 +976,10 @@ async function fetchCurrentIMDb(){
 
   fetchStrip.innerHTML='<div style="width:100%;text-align:center;padding:10px"><span class="spinner"></span> IMDb\'den aranıyor...</div>';
 
-  const data=await fetchOMDb(m.title,m.isSeries);
+  let data=await fetchOMDb(m.title,m.isSeries,m.year,m.imdbId);
+  if(!data.found&&!m.imdbId&&m.turkish){
+    data=await fetchOMDb(m.turkish,m.isSeries,m.year);
+  }
   imdbCache[imdbKey(m)]=data;
   saveIMDbCache();
   showModalIMDb();
@@ -1015,7 +1068,10 @@ async function bulkFetchIMDb(){
     document.getElementById('progressCount').textContent=`${done}/${total} tamamlandı · ✅ ${found} eşleşti · ❌ ${notFound} bulunamadı`;
     document.getElementById('progressBar').style.width=((done/total)*100)+'%';
 
-    const data=await fetchOMDb(m.title,m.isSeries);
+    let data=await fetchOMDb(m.title,m.isSeries,m.year,m.imdbId);
+    if(!data.found&&!m.imdbId&&m.turkish){
+      data=await fetchOMDb(m.turkish,m.isSeries,m.year);
+    }
     imdbCache[imdbKey(m)]=data;
     done++;
     if(data.found) found++; else notFound++;
@@ -1075,6 +1131,10 @@ function openNew(){
   document.getElementById('fSeasonMode').checked=false;
   document.getElementById('seasonInputRow').style.display='none';
   document.getElementById('fSeasonNumber').value='';
+  document.getElementById('fYear').value='';
+  document.getElementById('fImdbId').value='';
+  document.getElementById('yearRow').style.display='none';
+  document.getElementById('imdbIdRow').style.display='none';
   document.getElementById('fStreaming').value='';
   updateStreamingPreview();
   document.getElementById('formTitle').textContent='Yeni Film Ekle';
@@ -1104,6 +1164,8 @@ function saveMovie(){
     isSeries:document.getElementById('fSeries').checked,
     seasonMode:document.getElementById('fSeasonMode').checked,
     seasonNumber:document.getElementById('fSeasonNumber').value.trim(),
+    year:document.getElementById('fYear').value.trim(),
+    imdbId:document.getElementById('fImdbId').value.trim(),
     streamingPlatform:document.getElementById('fStreaming').value.trim(),
     favorite:false,wishlist:false
   };
@@ -1118,7 +1180,7 @@ function saveMovie(){
     m.favorite=movies[current].favorite;m.wishlist=movies[current].wishlist;movies[current]=m;
     showToast('✅ Güncellendi! Şimdi IMDb bilgilerini çekebilirsin','var(--success)');
   }
-  saveStore();populateShelfFilter();applyView();
+  saveStore();cleanOrphanCache();populateShelfFilter();applyView();
   showModalIMDb();
   // Not: modal kasıtlı olarak kapatılmıyor — kaydettikten hemen sonra IMDb/TMDB çekebilesin diye.
   // Bitirince "✕ Kapat" ile kendin kapatabilirsin.
@@ -1129,7 +1191,7 @@ function deleteMovie(){
   if(creating||current<0) return;
   const name=movies[current].title;
   if(confirm(`"${name}" kaydını silmek istediğinize emin misiniz?`)){
-    movies.splice(current,1);saveStore();populateShelfFilter();applyView();closeModal();
+    movies.splice(current,1);saveStore();cleanOrphanCache();populateShelfFilter();applyView();closeModal();
     showToast('🗑️ Silindi','var(--danger)');
   }
 }
@@ -1192,7 +1254,8 @@ function showToast(msg,color){
 
 /* --- SEARCH --- */
 document.getElementById('search').addEventListener('input',()=>applyView());
-document.getElementById('fTitle').addEventListener('input',()=>{if(document.getElementById('modal').style.display==='block') showModalIMDb();});
+document.getElementById('fTitle').addEventListener('input',function(){applyTitleCase(this);if(document.getElementById('modal').style.display==='block') showModalIMDb();});
+document.getElementById('fTurkish').addEventListener('input',function(){applyTitleCase(this);});
 
 /* --- EXPORT JSON --- */
 function exportJSON(){
